@@ -13,16 +13,29 @@ from browser_harness.helpers import cdp
 READ_STATE = Path(__file__).with_name("snapshot.js").read_text()
 MARKER = f"(() => {{ const state={READ_STATE}; return state?.marker ?? null; }})()"
 
+MOBILE_UA = (
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 "
+    "(KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"
+)
+
+
 class StalePage(ValueError):
     """A decision no longer refers to the observed page."""
 
 
 class Browser:
-    def __init__(self, url):
+    wheel = (550, 650)
+
+    def __init__(self, url, mobile=False):
         ensure_daemon()
         self.target = cdp("Target.createTarget", url="about:blank", background=True)["targetId"]
         self.session = cdp("Target.attachToTarget", targetId=self.target, flatten=True)["sessionId"]
-        self.call("Emulation.setDeviceMetricsOverride", width=1120, height=780, deviceScaleFactor=1, mobile=False)
+        width, height = (390, 844) if mobile else (1120, 780)
+        self.call("Emulation.setDeviceMetricsOverride", width=width, height=height, deviceScaleFactor=1 + mobile,
+                  mobile=mobile)
+        if mobile:
+            self.wheel = (195, 630)
+            self.call("Emulation.setUserAgentOverride", userAgent=MOBILE_UA)
         # Keep rAF/menus rendering in an owned background tab, without activating the user's Chrome tab.
         self.call("Emulation.setFocusEmulationEnabled", enabled=True)
         self.call("Page.navigate", url=url)
@@ -102,7 +115,9 @@ class Browser:
             raise StalePage("Page changed since this decision. Observe again.")
         if action["kind"] == "wait":
             time.sleep(0.1)
-        result = browser_operation({"operation": "act", "session": self.session, "action": action, "text": text})
+        result = browser_operation(
+            {"operation": "act", "session": self.session, "action": action, "text": text, "wheel": self.wheel}
+        )
         self.after_input = action if action["kind"] != "wait" else None
         return result
 
@@ -136,7 +151,8 @@ def browser_operation(request):
         action = request["action"]
         kind = action["kind"]
         if kind == "scroll":
-            call("Input.dispatchMouseEvent", type="mouseWheel", x=550, y=650, deltaX=0, deltaY=action["delta"])
+            x, y = request.get("wheel", (550, 650))
+            call("Input.dispatchMouseEvent", type="mouseWheel", x=x, y=y, deltaX=0, deltaY=action["delta"])
         elif kind != "wait":
             if type(action["node"]) is not int:
                 raise ValueError("Invalid observed node")

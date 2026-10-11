@@ -96,6 +96,28 @@ def test_all_heads_are_one_request_and_only_matching_head_executes(monkeypatch):
     assert set(calls[0]["questions"]) == {"operation", "click_target", "type_text_target"}
 
 
+def test_extra_questions_share_the_decision_request(monkeypatch):
+    calls = []
+
+    def post(_url, _key, body):
+        calls.append(body)
+        return {
+            "model": "test",
+            "answers": {
+                "operation": choice(body["questions"]["operation"]["criteria"], "TYPE_TEXT"),
+                "type_text_target": choice(["1"], "1"),
+                "stop_met": {"type": "noul", "noul": 0.9},
+            },
+        }
+
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test")
+    monkeypatch.setattr(model, "post_json", post)
+    extra = {"stop_met": {"type": "noul", "instructions": "Are results visible?"}}
+    d = model.choose(page(), "Find a book", [], extra)
+    assert len(calls) == 1 and calls[0]["questions"]["stop_met"] == extra["stop_met"]
+    assert d["choice"] == "e1" and d["raw_answers"]["stop_met"]["noul"] == 0.9
+
+
 def test_click_cannot_consume_a_text_target(monkeypatch):
     def post(_url, _key, body):
         return {

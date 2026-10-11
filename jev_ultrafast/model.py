@@ -78,7 +78,7 @@ def action_space(actions):
     return elements, targets, controls
 
 
-def choose(state, goal, history):
+def choose(state, goal, history, extra_questions=None):
     elements, targets, controls = action_space(state["actions"])
     labels = {
         "CLICK": "Click an element, button, menu option, autocomplete suggestion, or calendar day.",
@@ -104,6 +104,7 @@ def choose(state, goal, history):
             },
             "instructions": {"goal": goal, "operation": operation, "rules": [NEXT_ACTION, TARGET]},
         }
+    questions.update(extra_questions or {})
     body = {
         "model": os.environ.get("TYPESAFE_MODEL", "jev-latest"),
         "state": {
